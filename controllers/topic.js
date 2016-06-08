@@ -18,6 +18,7 @@ var store        = require('../common/store');
 var config       = require('../config');
 var _            = require('lodash');
 var cache        = require('../common/cache');
+var logger = require('../common/logger')
 
 /**
  * Topic page
@@ -56,7 +57,7 @@ exports.index = function (req, res, next) {
 
   Topic.getFullTopic(topic_id, ep.done(function (message, topic, author, replies) {
     if (message) {
-      ep.unbind();
+      logger.error('getFullTopic error topic_id: ' + topic_id)
       return res.renderError(message);
     }
 
@@ -379,7 +380,7 @@ exports.collect = function (req, res, next) {
         return next(err);
       }
       if (doc) {
-        res.json({status: 'success'});
+        res.json({status: 'failed'});
         return;
       }
 
@@ -413,25 +414,28 @@ exports.de_collect = function (req, res, next) {
     if (!topic) {
       res.json({status: 'failed'});
     }
-    TopicCollect.remove(req.session.user._id, topic._id, function (err) {
+    TopicCollect.remove(req.session.user._id, topic._id, function (err, removeResult) {
       if (err) {
         return next(err);
       }
+      if (removeResult.result.n == 0) {
+        return res.json({status: 'failed'})
+      }
+
+      User.getUserById(req.session.user._id, function (err, user) {
+        if (err) {
+          return next(err);
+        }
+        user.collect_topic_count -= 1;
+        req.session.user = user;
+        user.save();
+      });
+
+      topic.collect_count -= 1;
+      topic.save();
+
       res.json({status: 'success'});
     });
-
-    User.getUserById(req.session.user._id, function (err, user) {
-      if (err) {
-        return next(err);
-      }
-      user.collect_topic_count -= 1;
-      user.save();
-    });
-
-    topic.collect_count -= 1;
-    topic.save();
-
-    req.session.user.collect_topic_count -= 1;
   });
 };
 
